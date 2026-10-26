@@ -1016,6 +1016,14 @@ public final class MovementDispatcher extends Module {
         queuePistonAction(user, event, blockPosition, extending, facing);
       }
 
+      // Skip piston collision sync if player is too far away to be affected
+      double dxToPiston = blockPosition.getX() + 0.5 - movement.positionX;
+      double dyToPiston = blockPosition.getY() + 0.5 - movement.positionY;
+      double dzToPiston = blockPosition.getZ() + 0.5 - movement.positionZ;
+      if (dxToPiston * dxToPiston + dyToPiston * dyToPiston + dzToPiston * dzToPiston > 144.0) {
+        return;
+      }
+
       Modules.feedback().synchronize(player, nothing -> {
         // First off, check if the player is even affected by this
         RawVector3d directionVec = facing.directionVector();

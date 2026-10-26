@@ -1016,11 +1016,11 @@ public final class MovementDispatcher extends Module {
         queuePistonAction(user, event, blockPosition, extending, facing);
       }
 
-      // Skip piston collision sync if player is too far away to be affected
+      // Skip piston collision sync if player is too far away to be affected (6 blocks)
       double dxToPiston = blockPosition.getX() + 0.5 - movement.positionX;
       double dyToPiston = blockPosition.getY() + 0.5 - movement.positionY;
       double dzToPiston = blockPosition.getZ() + 0.5 - movement.positionZ;
-      if (dxToPiston * dxToPiston + dyToPiston * dyToPiston + dzToPiston * dzToPiston > 144.0) {
+      if (dxToPiston * dxToPiston + dyToPiston * dyToPiston + dzToPiston * dzToPiston > 36.0) {
         return;
       }
 

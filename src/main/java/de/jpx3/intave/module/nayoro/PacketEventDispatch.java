@@ -219,6 +219,9 @@ public final class PacketEventDispatch implements PacketEventSubscriber {
   public void receiveMovement(PacketEvent event) {
     Player player = event.getPlayer();
     User user = UserRepository.userOf(player);
+    if (!Nayoro.hasActiveConsumersSafe(user)) {
+      return;
+    }
     MovementMetadata movement = user.meta().movement();
     double x = movement.positionX;
     double y = movement.positionY;
@@ -391,6 +394,9 @@ public final class PacketEventDispatch implements PacketEventSubscriber {
   public void sendWindowItems(
     User user, WindowItemReader reader
   ) {
+    if (!Nayoro.hasActiveConsumersSafe(user)) {
+      return;
+    }
     int packetContainer = reader.windowId();
     int container = packetContainer == -1 && user.meta().connection().assumeWindowOpen
       ? user.meta().connection().assumedWindowId

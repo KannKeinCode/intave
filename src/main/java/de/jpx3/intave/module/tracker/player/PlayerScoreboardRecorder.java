@@ -21,7 +21,6 @@ import de.jpx3.intave.module.Modules;
 import de.jpx3.intave.module.linker.packet.ListenerPriority;
 import de.jpx3.intave.module.linker.packet.PacketSubscription;
 import de.jpx3.intave.module.linker.packet.PrioritySlot;
-import de.jpx3.intave.module.nayoro.Nayoro;
 import de.jpx3.intave.packet.reader.ScoreboardReader;
 import de.jpx3.intave.packet.reader.ScoreboardReader.Display;
 import de.jpx3.intave.packet.reader.ScoreboardReader.Objective;
@@ -119,9 +118,6 @@ public final class PlayerScoreboardRecorder extends Module {
   }
 
   private void flush(User user) {
-    if (!Nayoro.hasActiveConsumersSafe(user)) {
-      return;
-    }
     Snapshot current = snapshot(user);
     EmissionState state = emissionStates.get(user);
     for (ScoreboardEvent event : eventsBetween(state.last, current)) {

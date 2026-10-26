@@ -31,6 +31,7 @@ import de.jpx3.intave.module.tracker.player.PlayerVitalsTracker;
 import de.jpx3.intave.user.User;
 import de.jpx3.intave.user.UserLocal;
 import de.jpx3.intave.user.UserRepository;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.jetbrains.annotations.NotNull;
@@ -252,33 +253,8 @@ public final class Nayoro extends Module {
     }
   }
 
-  public boolean recordingActiveFor(User user) {
-    return Boolean.TRUE.equals(recording.get(user.id()));
-  }
-
-  public static boolean hasActiveConsumersSafe(User user) {
-    if (user == null) {
-      return true;
-    }
-    try {
-      return Modules.nayoro().hasActiveConsumers(user);
-    } catch (Exception ignored) {
-      return true;
-    }
-  }
-
-  public boolean hasActiveConsumers(User user) {
-    if (user == null) {
-      return false;
-    }
-    if (Boolean.TRUE.equals(recording.get(user.id()))) {
-      return true;
-    }
-    if (Modules.linker().nayoroEvents().totalLoaded() > 0) {
-      return true;
-    }
-    Set<EventSink> sinks = eventSinks.get(user);
-    return sinks.size() > 1;
+  public synchronized boolean recordingActiveFor(User user) {
+    return recording.containsKey(user.id()) && recording.get(user.id());
   }
 
   public synchronized boolean hasRecordSink(User user) {

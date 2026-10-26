@@ -24,21 +24,11 @@ import de.jpx3.intave.version.ProtocolVersionConverter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 final class RecordEventSink extends EventSink {
   private static final int COMPRESSION_FLUSH_THRESHOLD = 128 * 1024;
-  // Serialize and compress events on a background thread to avoid blocking the server thread
-  private static final ExecutorService ASYNC_SERIALIZER =
-    Executors.newSingleThreadExecutor(r -> {
-      Thread t = new Thread(r, "Intave-Nayoro-Writer");
-      t.setDaemon(true);
-      return t;
-    });
 
   private final long startedAt = System.currentTimeMillis();
   private long lastEventAt = startedAt;
@@ -49,7 +39,7 @@ final class RecordEventSink extends EventSink {
   private final NearbyBlockTracker nearbyBlocks = new NearbyBlockTracker();
   private boolean setup = false;
   // Guarded by writeLock so an in-flight event either finishes before close or observes closure.
-  private volatile boolean closed = false;
+  private boolean closed = false;
   private final Classifier classifier;
   private final Lock writeLock = new ReentrantLock();
 
@@ -72,19 +62,11 @@ final class RecordEventSink extends EventSink {
         JsonWriter initializedWriter = new JsonWriter(
           new PeriodicFlushOutputStream(output, COMPRESSION_FLUSH_THRESHOLD)
         );
-        HeaderEvent headerEvent = new HeaderEvent(UUID.randomUUID(), "unknown", classifier, startedAt);
+        initializedWriter.visitAny(
+          new HeaderEvent(UUID.randomUUID(), "unknown", classifier, startedAt)
+        );
         writer = initializedWriter;
         setup = true;
-        ASYNC_SERIALIZER.execute(() -> {
-          writeLock.lock();
-          try {
-            if (!closed) {
-              initializedWriter.visitAny(headerEvent);
-            }
-          } finally {
-            writeLock.unlock();
-          }
-        });
       } catch (IOException exception) {
         throw new IllegalStateException("Could not initialize recording writer", exception);
       } finally {
@@ -163,55 +145,33 @@ final class RecordEventSink extends EventSink {
 
   @Override
   public synchronized void visitAny(Event event) {
-    if (closed) {
-      return;
-    }
     setupIfNeeded();
-    long now = System.currentTimeMillis();
-    event.withOffset(Math.max(0, now - lastEventAt));
-    lastEventAt = now;
-    ASYNC_SERIALIZER.execute(() -> {
+    try {
       writeLock.lock();
-      try {
-        if (closed || writer == null) {
-          return;
-        }
-        writer.visitAny(event);
-      } finally {
-        writeLock.unlock();
+      if (closed) {
+        return;
       }
-    });
+      long now = System.currentTimeMillis();
+      event.withOffset(Math.max(0, now - lastEventAt));
+      lastEventAt = now;
+      writer.visitAny(event);
+    } finally {
+      writeLock.unlock();
+    }
   }
 
   @Override
-  public synchronized void close() {
-    if (closed) {
-      return;
-    }
+  public void close() {
     setupIfNeeded();
     try {
-      ASYNC_SERIALIZER.submit(() -> {
-        writeLock.lock();
-        try {
-          if (closed) {
-            return;
-          }
-          closed = true;
-          if (writer != null) {
-            writer.close();
-          }
-        } finally {
-          writeLock.unlock();
-        }
-      }).get();
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-    } catch (ExecutionException exception) {
-      Throwable cause = exception.getCause();
-      if (cause instanceof RuntimeException) {
-        throw (RuntimeException) cause;
+      writeLock.lock();
+      if (closed) {
+        return;
       }
-      throw new IllegalStateException("Could not close recording writer", cause);
+      closed = true;
+      writer.close();
+    } finally {
+      writeLock.unlock();
     }
   }
 

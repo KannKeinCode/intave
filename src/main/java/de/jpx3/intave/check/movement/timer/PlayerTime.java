@@ -67,12 +67,18 @@ public class PlayerTime extends MetaCheckPart<Timer, PlayerTime.PlayerTimeMeta> 
         ConnectionMetadata connectionData = user.meta().connection();
         PlayerTimeMeta checkMeta = metaOf(user);
         //noinspection deprecation
-        Modules.feedback().synchronize(user.player(), System.nanoTime(), (unused, time) -> {
-          connectionData.queueToNextTransaction(() -> {
-            checkMeta.time = Math.max(checkMeta.time, checkMeta.limitToBeApplied);
-            checkMeta.queuedLimit = time;
-          });
-        });
+        Modules.feedback().synchronize(
+          user.player(),
+          System.nanoTime(),
+          (unused, time) -> {
+            connectionData.queueToNextTransaction(() -> {
+              checkMeta.time = Math.max(checkMeta.time, checkMeta.limitToBeApplied);
+              checkMeta.queuedLimit = time;
+            });
+          },
+          // Reuse pending transaction slot when queue overflows
+          FeedbackOptions.APPEND_ON_OVERFLOW
+        );
       }));
     }, 0, 1).startAsync();
   }

@@ -100,7 +100,7 @@ public final class OffloadingOutputStream extends OutputStream {
     targetLock.lock();
     try {
       closed = true;
-      drainLocked();
+      drainLocked(0);
       try {
         target.close();
       } catch (IOException exception) {
@@ -140,10 +140,16 @@ public final class OffloadingOutputStream extends OutputStream {
 
   private void enqueue(byte[] chunk) {
     pending.add(chunk);
-    if (pendingBytes.get() > maxPendingBytes) {
-      // Executor is behind, write here instead of buffering more
-      drain();
-      return;
+    // Executor is stalled, write the oldest chunks here until we are back under the limit.
+    // Skipped while a drain is running, that one is already making progress.
+    if (pendingBytes.get() > maxPendingBytes && targetLock.tryLock()) {
+      try {
+        if (!closed) {
+          drainLocked(maxPendingBytes);
+        }
+      } finally {
+        targetLock.unlock();
+      }
     }
     try {
       // One drain per chunk, so a dropped task can't strand chunks
@@ -157,16 +163,17 @@ public final class OffloadingOutputStream extends OutputStream {
     targetLock.lock();
     try {
       if (!closed) {
-        drainLocked();
+        drainLocked(0);
       }
     } finally {
       targetLock.unlock();
     }
   }
 
-  private void drainLocked() {
+  // Writes queued chunks in order until at most keepBytes are left, 0 drains everything
+  private void drainLocked(long keepBytes) {
     byte[] chunk;
-    while ((chunk = pending.poll()) != null) {
+    while ((keepBytes == 0 || pendingBytes.get() > keepBytes) && (chunk = pending.poll()) != null) {
       pendingBytes.addAndGet(-chunk.length);
       if (failure != null) {
         continue;

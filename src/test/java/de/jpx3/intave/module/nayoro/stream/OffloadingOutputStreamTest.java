@@ -93,7 +93,37 @@ final class OffloadingOutputStreamTest {
     stream.write("9".getBytes(StandardCharsets.US_ASCII));
     stream.write("abc".getBytes(StandardCharsets.US_ASCII));
 
+    // Only the oldest chunk is written here, enough to get back under the limit
+    assertEquals("1234", target.content());
+
+    stream.close();
     assertEquals("123456789abc", target.content());
+  }
+
+  @Test
+  void keepsOrderWhenCallerAndExecutorDrainConcurrently() throws Exception {
+    byte[] input = new byte[512 * 1024];
+    new java.util.Random(7).nextBytes(input);
+    ByteArrayOutputStream target = new ByteArrayOutputStream();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      OffloadingOutputStream stream = new OffloadingOutputStream(target, executor, 1024, 4096);
+      java.util.Random sizes = new java.util.Random(11);
+      int offset = 0;
+      while (offset < input.length) {
+        int length = Math.min(input.length - offset, 1 + sizes.nextInt(3000));
+        stream.write(input, offset, length);
+        offset += length;
+        if (sizes.nextInt(10) == 0) {
+          stream.flush();
+        }
+      }
+      stream.close();
+    } finally {
+      executor.shutdown();
+      assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+    }
+    assertArrayEquals(input, target.toByteArray());
   }
 
   @Test

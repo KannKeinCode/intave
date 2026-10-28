@@ -36,7 +36,7 @@ import java.util.concurrent.locks.ReentrantLock;
 final class RecordEventSink extends EventSink {
   private static final int COMPRESSION_FLUSH_THRESHOLD = 128 * 1024;
   private static final int OFFLOAD_CHUNK_SIZE = 64 * 1024;
-  private static final long OFFLOAD_MAX_PENDING_BYTES = 8 * 1024 * 1024;
+  private static final long OFFLOAD_MAX_PENDING_BYTES = 1024 * 1024;
 
   private final long startedAt = System.currentTimeMillis();
   private long lastEventAt = startedAt;

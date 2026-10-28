@@ -13,22 +13,30 @@ package de.jpx3.intave.module.nayoro;
 
 import ac.intave.samples.event.*;
 import ac.intave.samples.serial.JsonWriter;
+import ac.intave.samples.serial.ZstdStreams;
 import ac.intave.samples.share.BlockUpdate;
 import ac.intave.samples.share.Classifier;
 import de.jpx3.intave.adapter.MinecraftVersion;
+import de.jpx3.intave.executor.BackgroundExecutors;
+import de.jpx3.intave.module.nayoro.stream.OffloadingOutputStream;
 import de.jpx3.intave.module.nayoro.stream.PeriodicFlushOutputStream;
 import de.jpx3.intave.module.tracker.entity.Entity;
 import de.jpx3.intave.user.meta.MovementMetadata;
 import de.jpx3.intave.version.ProtocolVersionConverter;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 final class RecordEventSink extends EventSink {
   private static final int COMPRESSION_FLUSH_THRESHOLD = 128 * 1024;
+  private static final int OFFLOAD_CHUNK_SIZE = 64 * 1024;
+  private static final long OFFLOAD_MAX_PENDING_BYTES = 8 * 1024 * 1024;
 
   private final long startedAt = System.currentTimeMillis();
   private long lastEventAt = startedAt;
@@ -59,8 +67,15 @@ final class RecordEventSink extends EventSink {
     if (!setup) {
       try {
         writeLock.lock();
-        JsonWriter initializedWriter = new JsonWriter(
+        // Same chain as JsonWriter(OutputStream), but compression runs in the background
+        OutputStream compressed = ZstdStreams.compressionStream(
           new PeriodicFlushOutputStream(output, COMPRESSION_FLUSH_THRESHOLD)
+        );
+        OutputStream offloaded = new OffloadingOutputStream(
+          compressed, BackgroundExecutors::executeWhenever, OFFLOAD_CHUNK_SIZE, OFFLOAD_MAX_PENDING_BYTES
+        );
+        JsonWriter initializedWriter = new JsonWriter(
+          new BufferedWriter(new OutputStreamWriter(offloaded, StandardCharsets.UTF_8))
         );
         initializedWriter.visitAny(
           new HeaderEvent(UUID.randomUUID(), "unknown", classifier, startedAt)

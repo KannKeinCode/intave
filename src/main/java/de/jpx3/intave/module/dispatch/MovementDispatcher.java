@@ -104,6 +104,7 @@ import static de.jpx3.intave.user.meta.ProtocolMetadata.*;
 
 public final class MovementDispatcher extends Module {
   private static final long PISTON_SNAPSHOT_RETENTION_NANOS = TimeUnit.SECONDS.toNanos(2);
+  private static final double PISTON_SLIME_SYNC_DISTANCE = 8;
 
 	private Physics physicsCheck;
   private TeleportController teleportController;
@@ -1163,6 +1164,10 @@ public final class MovementDispatcher extends Module {
     }
 
     MovementMetadata movement = user.meta().movement();
+    // Only players near the moved slime can be launched by it
+    if (!withinDistanceOfAny(movement, snapshot.slimeSources, PISTON_SLIME_SYNC_DISTANCE)) {
+      return;
+    }
     Direction movementDirection = extending ? facing : facing.getOpposite();
     AtomicReference<PistonActionUpdate> update = new AtomicReference<>(null);
     AtomicLong recordingStart = new AtomicLong(-1);
@@ -1193,6 +1198,21 @@ public final class MovementDispatcher extends Module {
         }
       }
     );
+  }
+
+  private static boolean withinDistanceOfAny(
+    MovementMetadata movement, List<BlockPosition> positions, double distance
+  ) {
+    double maxDistanceSquared = distance * distance;
+    for (BlockPosition position : positions) {
+      double dx = position.getX() + 0.5 - movement.positionX;
+      double dy = position.getY() + 0.5 - movement.positionY;
+      double dz = position.getZ() + 0.5 - movement.positionZ;
+      if (dx * dx + dy * dy + dz * dz <= maxDistanceSquared) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static final class PistonSnapshotKey {

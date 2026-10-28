@@ -5,6 +5,7 @@ import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketEvent;
 import de.jpx3.intave.IntavePlugin;
+import de.jpx3.intave.diagnostic.SlowPacketWatchdog;
 import de.jpx3.intave.user.User;
 import de.jpx3.intave.user.UserRepository;
 import org.bukkit.entity.Player;
@@ -44,15 +45,20 @@ public final class ForwardingPacketAdapter extends WeakReferencePacketAdapter {
       return;
     }
     // There will not be a user on login packet send
+    User user = null;
     if (event.getPacketType() != PacketType.Play.Server.LOGIN) {
-      User user = UserRepository.userOf(player);
+      user = UserRepository.userOf(player);
       if (user.shouldIgnoreNextOutboundPacket()) {
 //      user.receiveNextOutboundPacketAgain();
         return;
       }
     }
+    long start = System.nanoTime();
     for (PacketAdapter filteringPacketAdapter : targetList) {
       filteringPacketAdapter.onPacketSending(event);
+    }
+    if (user != null) {
+      SlowPacketWatchdog.observe(user, event.getPacketType(), false, start);
     }
   }
 
@@ -70,9 +76,11 @@ public final class ForwardingPacketAdapter extends WeakReferencePacketAdapter {
       user.receiveNextInboundPacketAgain();
       return;
     }
+    long start = System.nanoTime();
     for (PacketAdapter filteringPacketAdapter : targetList) {
       filteringPacketAdapter.onPacketReceiving(event);
     }
+    SlowPacketWatchdog.observe(user, event.getPacketType(), true, start);
   }
 
   @Override

@@ -116,8 +116,6 @@ public final class ConnectionMetadata {
   // Client Synchronization
   public int latency;
   public long lastKeepAliveDifference;
-  public long lastUntrackedKeepAliveReport;
-  public long lastSlowPacketReport;
   public int latencyJitter;
   public long transactionNumCounter = 0;
   public long lastReceivedTransactionNum = -1;
@@ -224,14 +222,6 @@ public final class ConnectionMetadata {
 
   public FeedbackQueue feedbackQueue() {
     return feedbackQueue;
-  }
-
-  // Short connection state for lag diagnostics
-  public String feedbackSummary() {
-    FeedbackRequest<?> oldest = feedbackQueue.peek();
-    long oldestAge = oldest == null ? 0 : oldest.passedTime();
-    return feedbackQueue.size() + " transactions pending, oldest " + oldestAge + "ms, "
-      + bufferEnqueue.size() + " packets buffered";
   }
 
   public ClientScoreboard clientScoreboard() {

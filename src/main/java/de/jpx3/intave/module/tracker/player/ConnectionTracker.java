@@ -29,7 +29,6 @@ import java.util.List;
 
 public final class ConnectionTracker extends Module {
   private static final long MAX_PENDING_AGE = 1000 * 30;
-  private static final long REPORT_INTERVAL = 1000 * 10;
 
   @PacketSubscription(
     priority = ListenerPriority.MONITOR,
@@ -79,13 +78,8 @@ public final class ConnectionTracker extends Module {
     }
     Long timeSent = synchronizeData.pollPendingKeepAlive(id);
     if (timeSent == null) {
-      long now = System.currentTimeMillis();
-      if (!user.justJoined() && now - synchronizeData.lastUntrackedKeepAliveReport > REPORT_INTERVAL) {
-        synchronizeData.lastUntrackedKeepAliveReport = now;
-        // Usually an answer older than MAX_PENDING_AGE
-        IntaveLogger.logger().info(player.getName() + " sent untracked keep-alive id " + id
-          + " (" + synchronizeData.pendingKeepAliveIdentifiers().size() + " keep-alives tracked, "
-          + synchronizeData.feedbackSummary() + ")");
+      if (!user.justJoined()) {
+        IntaveLogger.logger().info(player.getName() + " sent untracked keep-alive id " + id + ", but expected one of " + synchronizeData.pendingKeepAliveIdentifiers());
       }
       return;
     }

@@ -121,9 +121,9 @@ public final class TeleportController implements PacketEventSubscriber {
 		User user = UserRepository.userOf(player);
 		MovementMetadata movementData = user.meta().movement();
 		ProtocolMetadata protocol = user.meta().protocol();
-		ReentrantLock teleportLock = movementData.teleportLock;
+		ReentrantLock lock = user.meta().connection().feedbackAndTeleportLock;
 		try {
-			teleportLock.lock();
+			lock.lock();
 			movementData.replaceRecoveryWithExternalTeleport();
 			long teleportSequence = movementData.teleportSequence;
 			movementData.teleportSequence = teleportSequence + 1;
@@ -164,7 +164,7 @@ public final class TeleportController implements PacketEventSubscriber {
 				return queue;
 			});
 		} finally {
-			teleportLock.unlock();
+			lock.unlock();
 			reader.release();
 		}
 	}
@@ -200,7 +200,7 @@ public final class TeleportController implements PacketEventSubscriber {
 
 	public boolean setbackTeleportsAllowed(User user) {
 		MovementMetadata movementData = user.meta().movement();
-		ReentrantLock lock = movementData.teleportLock;
+		ReentrantLock lock = user.meta().connection().feedbackAndTeleportLock;
 		try {
 			lock.lock();
 			return !movementData.inRecovery && movementData.pendingTeleports.get().isEmpty();
@@ -219,7 +219,7 @@ public final class TeleportController implements PacketEventSubscriber {
 
 	private void movementCorrection(User user, PositionMoveRotation change, Boolean onGround) {
 		MovementMetadata movement = user.meta().movement();
-		movement.teleportLock.lock();
+		user.meta().connection().feedbackAndTeleportLock.lock();
 		try {
 			movement.invalidMovement = true;
 			if (!movement.pendingTeleports.get().isEmpty()) {
@@ -234,23 +234,23 @@ public final class TeleportController implements PacketEventSubscriber {
 				Position.mutableCopy(change.position()), change.motion().copy()
 			);
 			scheduler.accept(user, () -> {
-				movement.teleportLock.lock();
+				user.meta().connection().feedbackAndTeleportLock.lock();
 				try {
 					if (!movement.isRecovering(recovery)) return;
 					movement.finishRecoveryOnNextTeleport(recovery);
 					teleport(user, snapshot, Relative.RELATIVE_ROTATION, onGround, true);
 				} finally {
-					movement.teleportLock.unlock();
+					user.meta().connection().feedbackAndTeleportLock.unlock();
 				}
 			});
 		} finally {
-			movement.teleportLock.unlock();
+			user.meta().connection().feedbackAndTeleportLock.unlock();
 		}
 	}
 
 	public boolean processMovementPackets(User user) {
 		MovementMetadata movementData = user.meta().movement();
-		ReentrantLock lock = movementData.teleportLock;
+		ReentrantLock lock = user.meta().connection().feedbackAndTeleportLock;
 		try {
 			lock.lock();
 			return !movementData.inRecovery;
@@ -264,7 +264,7 @@ public final class TeleportController implements PacketEventSubscriber {
 			return false;
 		}
 		MovementMetadata movementData = user.meta().movement();
-		ReentrantLock lock = movementData.teleportLock;
+		ReentrantLock lock = user.meta().connection().feedbackAndTeleportLock;
 		try {
 			lock.lock();
 			return movementData.pendingTeleports.get().isEmpty();
@@ -289,10 +289,10 @@ public final class TeleportController implements PacketEventSubscriber {
 			return false;
 		}
 
-		ReentrantLock teleportLock = movementData.teleportLock;
+		ReentrantLock lock = user.meta().connection().feedbackAndTeleportLock;
 		TeleportEvent event = null;
 		try {
-			teleportLock.lock();
+			lock.lock();
 			Deque<Teleport> teleports = movementData.pendingTeleports.get();
 			Teleport first = teleports.peekFirst();
 			if (first == null) {
@@ -362,7 +362,7 @@ public final class TeleportController implements PacketEventSubscriber {
 				}
 			}
 		} finally {
-			teleportLock.unlock();
+			lock.unlock();
 		}
 		if (event == null) {
 			return false;
@@ -376,9 +376,9 @@ public final class TeleportController implements PacketEventSubscriber {
 			user.sendMessage(IntavePlugin.prefix() + ChatColor.RED + "Teleport resend timeout reached, clearing pending teleports.");
 		}
 		MovementMetadata movementData = user.meta().movement();
-		ReentrantLock teleportLock = movementData.teleportLock;
+		ReentrantLock lock = user.meta().connection().feedbackAndTeleportLock;
 		try {
-			teleportLock.lock();
+			lock.lock();
 			Deque<Teleport> teleports = movementData.pendingTeleports.get();
 			Teleport latest = teleports.peekLast();
 			if (latest == null) {
@@ -403,7 +403,7 @@ public final class TeleportController implements PacketEventSubscriber {
 			teleports.clear();
 			sendTeleport(user, retry);
 		} finally {
-			teleportLock.unlock();
+			lock.unlock();
 		}
 	}
 
@@ -413,7 +413,7 @@ public final class TeleportController implements PacketEventSubscriber {
 
 	private void teleport(User user, PositionMoveRotation change, Set<Relative> relativeSet, Boolean onGround, boolean preserveServerMotion) {
 		MovementMetadata movement = user.meta().movement();
-		movement.teleportLock.lock();
+		user.meta().connection().feedbackAndTeleportLock.lock();
 		try {
 			if (!movement.pendingTeleports.get().isEmpty()) return;
 			movement.replaceRecoveryWithExternalTeleport();
@@ -437,7 +437,7 @@ public final class TeleportController implements PacketEventSubscriber {
 			}
 			sendTeleport(user, teleport);
 		} finally {
-			movement.teleportLock.unlock();
+			user.meta().connection().feedbackAndTeleportLock.unlock();
 		}
 	}
 
@@ -486,18 +486,18 @@ public final class TeleportController implements PacketEventSubscriber {
 
 	void beforeTeleportTransactionReceive(User user, Teleport teleport) {
 		MovementMetadata movement = user.meta().movement();
-		movement.teleportLock.lock();
+		user.meta().connection().feedbackAndTeleportLock.lock();
 		try {
 			if (movement.pendingTeleports.get().stream().noneMatch(pending -> pending == teleport)) return;
 			teleport.allow();
 		} finally {
-			movement.teleportLock.unlock();
+			user.meta().connection().feedbackAndTeleportLock.unlock();
 		}
 	}
 
 	void afterTeleportTransactionReceive(User user, Teleport teleport) {
 		MovementMetadata movement = user.meta().movement();
-		movement.teleportLock.lock();
+		user.meta().connection().feedbackAndTeleportLock.lock();
 		try {
 			// A confirmation or retry may have retired this request already.
 			if (movement.pendingTeleports.get().stream().noneMatch(pending -> pending == teleport)) return;
@@ -510,7 +510,7 @@ public final class TeleportController implements PacketEventSubscriber {
 				onResendTimeout(user);
 			}
 		} finally {
-			movement.teleportLock.unlock();
+			user.meta().connection().feedbackAndTeleportLock.unlock();
 		}
 	}
 }

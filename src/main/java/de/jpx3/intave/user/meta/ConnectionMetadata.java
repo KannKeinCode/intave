@@ -23,6 +23,7 @@ import de.jpx3.intave.executor.RateLimiter;
 import de.jpx3.intave.math.MathHelper;
 import de.jpx3.intave.math.Occurrences;
 import de.jpx3.intave.module.feedback.DelayedPacket;
+import de.jpx3.intave.module.feedback.FeedbackDispatch;
 import de.jpx3.intave.module.feedback.FeedbackQueue;
 import de.jpx3.intave.module.feedback.FeedbackRequest;
 import de.jpx3.intave.module.feedback.PendingCountingFeedbackObserver;
@@ -40,6 +41,8 @@ public final class ConnectionMetadata {
   private final FeedbackQueue feedbackQueue = new FeedbackQueue();
   // Feedback sends can synchronously invoke teleport and velocity listeners.
   public final ReentrantLock feedbackAndTeleportLock = new ReentrantLock();
+  /** Guarded by {@link #feedbackAndTeleportLock}. */
+  public final FeedbackDispatch feedbackDispatch = new FeedbackDispatch();
   private final Map<Long, Queue<FeedbackRequest<?>>> transactionOptionalAppendMap = Maps.newConcurrentMap();
   private final Map<Integer, Entity> entitiesById = Maps.newConcurrentMap();
   private final Map<Integer, Integer> entityVehicles = Maps.newConcurrentMap();

@@ -147,9 +147,10 @@ public final class FeedbackSender extends Module {
       lock.lock();
       tracedSingleSynchronize(player, target, firstCallback, firstTracker, options);
       // Wrap existing packet handle to avoid reflective field cloning in shallowClone()
-      PacketSender.sendServerPacketWithoutEvent(
-        player,
-        new PacketContainer(encapsulate.getType(), encapsulate.getHandle())
+      PacketContainer wrapped = new PacketContainer(encapsulate.getType(), encapsulate.getHandle());
+      // Same dispatch as the feedback packets around it, so the three stay in order.
+      user.meta().connection().feedbackDispatch.send(
+        () -> PacketSender.sendServerPacketWithoutEvent(player, wrapped)
       );
       tracedSingleSynchronize(player, target, secondCallback, secondTracker, options);
     } finally {
@@ -386,34 +387,42 @@ public final class FeedbackSender extends Module {
     if (dumpFeedback) {
       Thread.dumpStack();
     }
-    Modules.feedbackAnalysis().sentTransaction(user, request);
-    if (IntaveControl.DEBUG_FEEDBACK_PACKETS) {
-//      System.out.println("Received " + transactionIdentifier + "/" +transactionResponse.num() + " from " + player.getName());
-      System.out.println("Sent " + id + "/"+request.num() + " to " + receiver.getName());
-    }
+    PacketContainer bundle = null;
     if (MinecraftVersions.VER1_19_4.atOrAbove() && !bundlingDisabled && toBundle != null) {
-      PacketContainer bundle = new PacketContainer(BUNDLE);
+      bundle = new PacketContainer(BUNDLE);
       StructureModifier<Iterable<PacketContainer>> containingPackets = bundle.getPacketBundles();
       containingPackets.write(0, Arrays.asList(packet, toBundle.getPacket()/*.shallowClone()*/));
       if (toBundle.isReadOnly()) {
         toBundle.setReadOnly(false);
       }
+      // The bundle replaces the packet; cancel it now, while its listeners still run.
       toBundle.setCancelled(true);
-      PacketSender.sendServerPacketWithoutEvent(receiver, bundle);
-    } else {
-      // with event
-      PacketSender.sendServerPacket(receiver, packet);
     }
-    request.sent();
-    if (IntaveControl.CLIENT_KEEP_ALIVE_NETTY_CHECK) {
-      PacketContainer keepAlivePacket = protocol.createPacket(KEEP_ALIVE);
-      if (MinecraftVersions.VER1_12_0.atOrAbove()) {
-        keepAlivePacket.getLongs().write(0, (long) request.userKey());
-      } else {
-        keepAlivePacket.getIntegers().write(0, (int) request.userKey());
+    PacketContainer feedbackPacket = packet;
+    PacketContainer bundledPacket = bundle;
+    user.meta().connection().feedbackDispatch.send(() -> {
+      Modules.feedbackAnalysis().sentTransaction(user, request);
+      if (IntaveControl.DEBUG_FEEDBACK_PACKETS) {
+//        System.out.println("Received " + transactionIdentifier + "/" +transactionResponse.num() + " from " + player.getName());
+        System.out.println("Sent " + id + "/" + request.num() + " to " + receiver.getName());
       }
-      PacketSender.sendServerPacket(receiver, keepAlivePacket);
-    }
+      if (bundledPacket != null) {
+        PacketSender.sendServerPacketWithoutEvent(receiver, bundledPacket);
+      } else {
+        // with event
+        PacketSender.sendServerPacket(receiver, feedbackPacket);
+      }
+      request.sent();
+      if (IntaveControl.CLIENT_KEEP_ALIVE_NETTY_CHECK) {
+        PacketContainer keepAlivePacket = protocol.createPacket(KEEP_ALIVE);
+        if (MinecraftVersions.VER1_12_0.atOrAbove()) {
+          keepAlivePacket.getLongs().write(0, (long) request.userKey());
+        } else {
+          keepAlivePacket.getIntegers().write(0, (int) request.userKey());
+        }
+        PacketSender.sendServerPacket(receiver, keepAlivePacket);
+      }
+    });
   }
 
   private static ReentrantLock userLock(User user) {

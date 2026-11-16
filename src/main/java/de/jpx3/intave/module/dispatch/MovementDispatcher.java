@@ -502,8 +502,7 @@ public final class MovementDispatcher extends Module {
     }
 
     double distanceMoved = Hypot.fast(movement.offsetMotionX(), movement.offsetMotionZ());
-    boolean wrappedItemUse = inventoryData.activatedItemThisTick
-      && inventoryData.deactivatedItemThisTick;
+    boolean wrappedItemUse = inventoryData.wrappedRestrictingItemUseThisTick();
     boolean repeatedItemUse = inventoryData.repeatedItemUseRequestThisTick();
     if ((wrappedItemUse || repeatedItemUse) && distanceMoved > 0.1) {
       if (violationLevelData.wrappedNoSlowdownVL++ > 5) {

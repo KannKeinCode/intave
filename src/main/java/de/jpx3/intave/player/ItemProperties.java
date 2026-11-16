@@ -31,7 +31,8 @@ import java.util.stream.Collectors;
 import static de.jpx3.intave.player.Enchantments.tridentRiptideEnchanted;
 
 public final class ItemProperties {
-  private static final ItemUseProfile DEFAULT_USE_PROFILE = new ItemUseProfile(false, 0.2F);
+  /** Use effects of an item without a use effects component: no sprinting, 20% speed. */
+  static final ItemUseProfile DEFAULT_USE_PROFILE = new ItemUseProfile(false, 0.2F);
   public static final Material ITEM_TRIDENT = materialByName("TRIDENT");
   public static final Material CROSSBOW = materialByName("CROSSBOW");
   private static final Set<Material> materialSwordItems = EnumSet.noneOf(Material.class);
@@ -413,6 +414,12 @@ public final class ItemProperties {
     if (itemStack == null) {
       return DEFAULT_USE_PROFILE;
     }
+    // Item metadata only holds a stack's own components, not its item type's defaults:
+    // an unmodified spear would look like it slows down. Prefer the effective component.
+    ItemUseProfile nativeProfile = NativeUseEffects.read(itemStack);
+    if (nativeProfile != null) {
+      return nativeProfile;
+    }
     Object useEffects = itemMetaComponent(itemStack, "hasUseEffects", "getUseEffects");
     if (useEffects == null) {
       return DEFAULT_USE_PROFILE;
@@ -432,11 +439,15 @@ public final class ItemProperties {
     if (canSprint == null || speedMultiplier == null) {
       return DEFAULT_USE_PROFILE;
     }
-    float multiplier = speedMultiplier.floatValue();
-    if (!Float.isFinite(multiplier) || multiplier < 0.0F || multiplier > 1.0F) {
+    return validatedUseProfile(canSprint, speedMultiplier.floatValue());
+  }
+
+  /** A use profile for the component values, or the default if they are out of range. */
+  static ItemUseProfile validatedUseProfile(boolean canSprint, float speedMultiplier) {
+    if (!Float.isFinite(speedMultiplier) || speedMultiplier < 0.0F || speedMultiplier > 1.0F) {
       return DEFAULT_USE_PROFILE;
     }
-    return new ItemUseProfile(canSprint, multiplier);
+    return new ItemUseProfile(canSprint, speedMultiplier);
   }
 
   @Nullable
@@ -491,6 +502,19 @@ public final class ItemProperties {
 
     public float speedMultiplier() {
       return speedMultiplier;
+    }
+
+    /**
+     * Whether using the item changes movement. Using or releasing an item that does not
+     * (such as a default spear) gives a client nothing to bypass.
+     */
+    public boolean restrictsMovement() {
+      return restrictsMovement(canSprint, speedMultiplier);
+    }
+
+    /** {@link #restrictsMovement()} for a profile stored as its two values. */
+    public static boolean restrictsMovement(boolean canSprint, float speedMultiplier) {
+      return !canSprint || speedMultiplier < 1.0F;
     }
 
     @Override

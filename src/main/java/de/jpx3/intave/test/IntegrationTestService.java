@@ -35,6 +35,7 @@ import de.jpx3.intave.module.Modules;
 import de.jpx3.intave.module.feedback.FeedbackTests;
 import de.jpx3.intave.module.linker.bukkit.BukkitEventSubscription;
 import de.jpx3.intave.packet.reader.ReaderTests;
+import de.jpx3.intave.player.ItemUseEffectsTests;
 import de.jpx3.intave.resource.Resource;
 import de.jpx3.intave.resource.Resources;
 import de.jpx3.intave.security.HWIDVerification;
@@ -205,6 +206,7 @@ public final class IntegrationTestService implements EventProcessor {
       addTests(tests, EntitySizeTests.class);
       addTests(tests, FeedbackTests.class);
       addTests(tests, ReaderTests.class);
+      addTests(tests, ItemUseEffectsTests.class);
       addTests(tests, FluidTests.class);
       addTests(tests, ReferenceExistenceTests.class);
 

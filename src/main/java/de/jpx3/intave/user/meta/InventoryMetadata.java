@@ -52,6 +52,10 @@ public final class InventoryMetadata {
   public boolean releaseItemNextTick = false;
   public boolean activatedItemThisTick = false;
   public boolean deactivatedItemThisTick = false;
+  // The no-slowdown heuristics only concern uses that change movement: wrapping or
+  // repeating the use of an item without slowdown (a default spear) bypasses nothing.
+  private boolean restrictingItemActivatedThisTick;
+  private boolean restrictingItemDeactivatedThisTick;
   private boolean repeatedItemUseRequestThisTick;
   private boolean suspiciousNoSlowdownPacketPatternThisTick;
   public Material releaseItemType = Material.AIR;
@@ -325,7 +329,7 @@ public final class InventoryMetadata {
       && !ItemProperties.startsUsingOnBlock(user, requestedItem)) {
       return false;
     }
-    if (handActive() && handActiveTicks > 0) {
+    if (handActive() && handActiveTicks > 0 && activeItemRestrictsMovement()) {
       // Minecraft suppresses further use attempts while either hand is busy.
       // Once the initial use has crossed a movement boundary, another usable-
       // item request without a release comes from packet-level item-use wrapping
@@ -420,7 +424,8 @@ public final class InventoryMetadata {
       this.pastItemUsageTransition = 0;
       this.handActiveTicks = 0;
       this.activatedItemThisTick = true;
-      if (deactivatedItemThisTick) {
+      this.restrictingItemActivatedThisTick |= profile.restrictsMovement();
+      if (wrappedRestrictingItemUseThisTick()) {
         suspiciousNoSlowdownPacketPatternThisTick = true;
       }
 
@@ -466,7 +471,9 @@ public final class InventoryMetadata {
       this.pastItemUsageTransition = 0;
       this.handActiveTicks = 0;
       this.deactivatedItemThisTick = true;
-      if (activatedItemThisTick) {
+      // Still the released item's profile; it is reset below.
+      this.restrictingItemDeactivatedThisTick |= activeItemRestrictsMovement();
+      if (wrappedRestrictingItemUseThisTick()) {
         suspiciousNoSlowdownPacketPatternThisTick = true;
       }
       Material activeItem = this.activeItemType;
@@ -603,7 +610,10 @@ public final class InventoryMetadata {
       pastItemUsageTransition = interrupted.pastItemUsageTransition;
       deactivateHandAtTickEnd = false;
       activatedItemThisTick = true;
-      suspiciousNoSlowdownPacketPatternThisTick = true;
+      if (activeItemRestrictsMovement()) {
+        restrictingItemActivatedThisTick = true;
+        suspiciousNoSlowdownPacketPatternThisTick = true;
+      }
 
       // A vanilla client sends at most one carried-slot update per client tick.
       // Returning to the original slot before movement is therefore a packet-
@@ -638,6 +648,20 @@ public final class InventoryMetadata {
     return repeatedItemUseRequestThisTick;
   }
 
+  /**
+   * Whether this tick both released and started the use of items that change movement, the
+   * packet pattern of wrapping item use to skip its slowdown.
+   */
+  public boolean wrappedRestrictingItemUseThisTick() {
+    return restrictingItemActivatedThisTick && restrictingItemDeactivatedThisTick;
+  }
+
+  private boolean activeItemRestrictsMovement() {
+    return ItemProperties.ItemUseProfile.restrictsMovement(
+      activeItemAllowsSprinting, activeItemUseSpeedMultiplier
+    );
+  }
+
   public boolean suspiciousNoSlowdownPacketPatternThisTick() {
     return suspiciousNoSlowdownPacketPatternThisTick;
   }
@@ -649,6 +673,8 @@ public final class InventoryMetadata {
   public void clearItemUseTickTransitions() {
     activatedItemThisTick = false;
     deactivatedItemThisTick = false;
+    restrictingItemActivatedThisTick = false;
+    restrictingItemDeactivatedThisTick = false;
     repeatedItemUseRequestThisTick = false;
     // Keep slot-switch ordering available to movement physics. tickComplete()
     // clears it after the packet has selected its simulation branch.
@@ -702,6 +728,8 @@ public final class InventoryMetadata {
     this.activeItemUseSpeedMultiplier = activeItemUseSpeedMultiplier;
     this.itemUseSlotSwitchConfirmedThisTick = false;
     this.viaVersionItemUseStateUncertain = false;
+    this.restrictingItemActivatedThisTick = false;
+    this.restrictingItemDeactivatedThisTick = false;
     this.repeatedItemUseRequestThisTick = false;
     this.suspiciousNoSlowdownPacketPatternThisTick = false;
     this.slotSwitchInterruptedItemUse = null;

@@ -16,6 +16,7 @@ import de.jpx3.intave.adapter.MinecraftVersions;
 import de.jpx3.intave.test.FakePlayerFactory;
 import de.jpx3.intave.user.User;
 import de.jpx3.intave.user.UserFactory;
+import de.jpx3.intave.user.meta.InventoryMetadata;
 import de.jpx3.intave.user.meta.ProtocolMetadata;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -128,6 +129,82 @@ class ItemPropertiesTest {
     assertTrue(user.meta().inventory().activateHandIfUsable(null));
     assertTrue(user.meta().inventory().activeItemAllowsSprinting());
     assertEquals(0.5F, user.meta().inventory().activeItemUseSpeedMultiplier());
+  }
+
+  @Test
+  void onlyItemsWithSlowdownOrNoSprintRestrictMovement() {
+    assertFalse(ItemProperties.ItemUseProfile.restrictsMovement(true, 1.0F));
+    assertTrue(ItemProperties.ItemUseProfile.restrictsMovement(false, 1.0F));
+    assertTrue(ItemProperties.ItemUseProfile.restrictsMovement(true, 0.5F));
+    assertTrue(ItemProperties.DEFAULT_USE_PROFILE.restrictsMovement());
+  }
+
+  @Test
+  void outOfRangeUseEffectsFallBackToTheDefaultProfile() {
+    assertEquals(ItemProperties.DEFAULT_USE_PROFILE, ItemProperties.validatedUseProfile(true, 1.5F));
+    assertEquals(ItemProperties.DEFAULT_USE_PROFILE, ItemProperties.validatedUseProfile(true, -0.1F));
+    assertEquals(ItemProperties.DEFAULT_USE_PROFILE, ItemProperties.validatedUseProfile(true, Float.NaN));
+    assertFalse(ItemProperties.validatedUseProfile(true, 1.0F).restrictsMovement());
+  }
+
+  @Test
+  void repeatedUseOfAnUnrestrictedItemIsNotANoSlowdownPattern() {
+    // Holding right-click with a default spear: sprinting allowed, no slowdown (#275).
+    InventoryMetadata inventory = inventoryHolding(componentItem(false, 1.6F, true, 1.0F));
+    assertTrue(inventory.activateHandIfUsable(null));
+    endTick(inventory);
+    inventory.activateHandIfUsable(null);
+    assertFalse(inventory.repeatedItemUseRequestThisTick());
+    assertFalse(inventory.suspiciousNoSlowdownPacketPatternThisTick());
+  }
+
+  @Test
+  void repeatedUseOfARestrictingItemStaysANoSlowdownPattern() {
+    InventoryMetadata inventory = inventoryHolding(componentItem(false, 1.6F, false, 0.2F));
+    assertTrue(inventory.activateHandIfUsable(null));
+    endTick(inventory);
+    inventory.activateHandIfUsable(null);
+    assertTrue(inventory.repeatedItemUseRequestThisTick());
+    assertTrue(inventory.suspiciousNoSlowdownPacketPatternThisTick());
+  }
+
+  @Test
+  void wrappingTheUseOfAnUnrestrictedItemIsNotANoSlowdownPattern() {
+    // Spamming right-click with a default spear releases and restarts use in one tick.
+    InventoryMetadata inventory = inventoryHolding(componentItem(false, 1.6F, true, 1.0F));
+    assertTrue(inventory.activateHandIfUsable(null));
+    endTick(inventory);
+    inventory.deactivateHand();
+    inventory.activateHandIfUsable(null);
+    assertFalse(inventory.wrappedRestrictingItemUseThisTick());
+    assertFalse(inventory.suspiciousNoSlowdownPacketPatternThisTick());
+    // The transitions themselves are still recorded as they happened.
+    assertTrue(inventory.activatedItemThisTick);
+    assertTrue(inventory.deactivatedItemThisTick);
+  }
+
+  @Test
+  void wrappingTheUseOfARestrictingItemStaysANoSlowdownPattern() {
+    InventoryMetadata inventory = inventoryHolding(componentItem(false, 1.6F, false, 0.2F));
+    assertTrue(inventory.activateHandIfUsable(null));
+    endTick(inventory);
+    inventory.deactivateHand();
+    inventory.activateHandIfUsable(null);
+    assertTrue(inventory.wrappedRestrictingItemUseThisTick());
+    assertTrue(inventory.suspiciousNoSlowdownPacketPatternThisTick());
+  }
+
+  private static InventoryMetadata inventoryHolding(ItemStack item) {
+    User user = userWithFoodLevel(10);
+    user.player().getInventory().setItem(0, item);
+    InventoryMetadata inventory = user.meta().inventory();
+    inventory.setHeldItemSlot(0);
+    return inventory;
+  }
+
+  private static void endTick(InventoryMetadata inventory) {
+    inventory.clearItemUseTickTransitions();
+    inventory.tickComplete();
   }
 
   @Test
